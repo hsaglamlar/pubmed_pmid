@@ -311,6 +311,13 @@ class PubmedPMID:
         if pages is not None:
             article_info["pages"] = pages.text or ""
 
+        # Get the article publication type
+        type_infos = article.findall("PublicationTypeList/PublicationType")
+        article_info["publication_type"] = ""
+        if len(type_infos) > 0:
+            article_info["publication_type"] = [( type_info.attrib.get('UI',None), type_info.text) for type_info in type_infos]
+            
+
         return article_info
 
     def get_authors(self, xml_tree):
