@@ -25,24 +25,26 @@ Example:
 
 Some codes are adapted from https://github.com/titipata/pubmed_parser
 """
-import re
-from urllib.parse import quote
+
 from itertools import chain
 
 import gzip
 
 import requests
-from lxml import etree
+from lxml import etree  # type: ignore
 
-from bs4 import BeautifulSoup
-import tiktoken
+import tiktoken  # type: ignore
+
+from detect_sentences import get_sentences
+from citation_count import get_article_citation_count
+from journal_ranking import get_journal_ranking
 
 
-class PubmedPMID:
+class PubmedParser:
     """Class for generating a JSON object for a PubMed article. The JSON object contains
     the abstract of the article and the meta information of the article such as the article
     title, authors, journal info, etc. The JSON object also contains the article splits
-    which are the abstract split into paragraphs of max_split_token_length & 
+    which are the abstract split into paragraphs of max_split_token_length &
     min_split_token_length tokens with an overlap of sentence_overlap sentences.
 
     Args:
@@ -68,14 +70,14 @@ class PubmedPMID:
         max_split_token_length: int = 500,
         min_split_token_length: int = 100,
         sentence_overlap: int = 2,
-        get_citation_count: bool = False,
-        get_journal_ranking: bool = False,
+        get_citation_count_bool: bool = False,
+        get_journal_ranking_bool: bool = False,
     ):
         self.max_split_token_length = max_split_token_length
         self.sentence_overlap = sentence_overlap
         self.min_split_token_length = min_split_token_length
-        self.citation_count_bool = get_citation_count
-        self.journal_ranking_bool = get_journal_ranking
+        self.citation_count_bool = get_citation_count_bool
+        self.journal_ranking_bool = get_journal_ranking_bool
         self.journal_ranking_dict = {}
 
     def get_pubmed_article_xml(self, pmid=None):
@@ -225,7 +227,7 @@ class PubmedPMID:
         Args:
             xml_tree (Element): The lxml node pointing to a medline document
         Returns:
-            dict: A dictionary containing the journal name, 
+            dict: A dictionary containing the journal name,
                   journal abbreviation, ISSN and publication date
         """
         journal_info = {}
@@ -315,8 +317,10 @@ class PubmedPMID:
         type_infos = article.findall("PublicationTypeList/PublicationType")
         article_info["publication_type"] = ""
         if len(type_infos) > 0:
-            article_info["publication_type"] = [( type_info.attrib.get('UI',None), type_info.text) for type_info in type_infos]
-            
+            article_info["publication_type"] = [
+                (type_info.attrib.get("UI", None), type_info.text)
+                for type_info in type_infos
+            ]
 
         return article_info
 
@@ -325,7 +329,7 @@ class PubmedPMID:
         Args:
             xml_tree (Element): The lxml node pointing to a medline document
         Returns:
-            list: A list of dictionaries containing the first name, middle name, 
+            list: A list of dictionaries containing the first name, middle name,
                   last name, suffix, initials, affiliation and email
         """
 
@@ -335,22 +339,30 @@ class PubmedPMID:
             for author in author_list:
                 authors.append(
                     {
-                        "first": author.find("ForeName").text
-                        if author.find("ForeName") is not None
-                        else "",
+                        "first": (
+                            author.find("ForeName").text
+                            if author.find("ForeName") is not None
+                            else ""
+                        ),
                         "middle": "",
-                        "last": author.find("LastName").text
-                        if author.find("LastName") is not None
-                        else "",
+                        "last": (
+                            author.find("LastName").text
+                            if author.find("LastName") is not None
+                            else ""
+                        ),
                         "suffix": "",
-                        "initials": author.find("Initials").text
-                        if author.find("Initials") is not None
-                        else "",
-                        "affiliation": self.__stringify_children(
-                            author.find("AffiliationInfo/Affiliation")
-                        )
-                        if author.find("AffiliationInfo/Affiliation") is not None
-                        else "",
+                        "initials": (
+                            author.find("Initials").text
+                            if author.find("Initials") is not None
+                            else ""
+                        ),
+                        "affiliation": (
+                            self.__stringify_children(
+                                author.find("AffiliationInfo/Affiliation")
+                            )
+                            if author.find("AffiliationInfo/Affiliation") is not None
+                            else ""
+                        ),
                         "email": "",
                     }
                 )
@@ -383,133 +395,12 @@ class PubmedPMID:
             mesh_terms = ""
         return mesh_terms
 
-    def get_article_citation_count(self, doi=None):
-        """Get the citation count of an article based on the DOI using the crossref website
-        https://api.crossref.org/works/{doi}
-
-        Args:
-            doi (str): The DOI of the article
-        Returns:
-            int: The citation count of the article
-        """
-
-        if doi in ["", None]:
-            print("DOI is empty, cannot get citation count")
-            return None
-        params = {"mailto": "halil@johnsnowlabs.com"}
-        url = f"https://api.crossref.org/works/{doi}"
-        response = requests.get(url, params=params, timeout=15)
-        data = response.json()
-
-        if (response.status_code == 200) and (
-            "is-referenced-by-count" in data["message"]
-        ):
-            return data["message"]["is-referenced-by-count"]
-
-        return None
-
-    def get_journal_ranking(self, journal_name=None):
-        """Get the ranking of a journal based on the journal name using the exaly website
-        https://exaly.com/journals/if/1?q=
-
-        Args:
-            journal_name (str): The full name of the journal
-        Returns:
-            dict: A dictionary containing the journal ranking info
-        """
-
-        if journal_name in ["", None]:
-            print("Journal name is empty, cannot get journal ranking")
-            return {}
-
-        if journal_name in self.journal_ranking_dict:
-            return self.journal_ranking_dict[journal_name]
-
-        query = quote(journal_name.replace("&", "and"))
-
-        # URL of the webpage containing the table
-        url = f"https://exaly.com/journals/if/1?q={query}"
-
-        # Send a GET request to the webpage
-        response = requests.get(url, timeout=15)
-
-        if response.status_code == 200:
-            # Create a BeautifulSoup object to parse the HTML content
-            soup = BeautifulSoup(response.content, "html.parser")
-
-            # Find the table element on the webpage
-            table = soup.find("table")
-            ranking = None
-
-            if table:
-                # Extract the data from the table
-                table_data = []
-                for row in table.find_all("tr"):
-                    row_data = []
-                    for cell in row.find_all(["th", "td"]):
-                        row_data.append(cell.get_text(strip=True))
-                    if row_data:
-                        table_data.append(row_data)
-
-                for row in table_data:
-                    if (
-                        row[0].replace("&", "and").lower()
-                        == journal_name.replace("&", "and").lower()
-                    ):
-                        ranking = dict(zip(table_data[0], row))
-                        break
-
-                if ranking is None:
-                    # Create a dictionary from the first two rows of the table
-                    ranking = dict(zip(table_data[0], table_data[1]))
-
-                _ = ranking.pop("star")  # remove the star column
-
-                # add the journal name to the dictionary
-                self.journal_ranking_dict[journal_name] = ranking
-            else:
-                ranking = {}
-        else:
-            ranking = {}
-
-        return ranking
-
-    def get_sentences(self, content):
-        """Get the sentences from the content and return them as a list"""
-
-        formater = Formater()
-        _UNPROTECTED_BREAK_INDICATOR = "(?![^]*)"
-
-        content_modified = formater.generate_protecedContent(content)
-
-        list_sentences = re.split(_UNPROTECTED_BREAK_INDICATOR, content_modified)
-
-        list_sentences = [
-            sentence.replace(BREAK_INDICATOR, "") for sentence in list_sentences
-        ]
-        list_sentences = [
-            sentence.replace(BREAK_INDICATOR, "") for sentence in list_sentences
-        ]
-
-        def recover_senctence(sentence: str):
-            wip_sentence = sentence
-            for key, item in reverse_dict.items():
-                wip_sentence = wip_sentence.replace(key, item)
-            return wip_sentence
-
-        list_sentences = [recover_senctence(sentence) for sentence in list_sentences]
-        list_sentences = [
-            sentence.strip() for sentence in list_sentences if sentence.strip() != ""
-        ]
-
-        return list_sentences
-
     def split_article_paragraphs(self, json_data):
         """Split the article into paragraphs of max_token_length & min_token_length tokens
         with an overlap of sentence_overlap sentences"""
 
         def group_sentences(sentences, max_tokens, overlap_length):
-            """Group sentences into groups of max_tokens tokens 
+            """Group sentences into groups of max_tokens tokens
             with an overlap of overlap_length sentences"""
             grouped_sentences = []
             current_group = []
@@ -547,7 +438,7 @@ class PubmedPMID:
         pmid = json_data["pmid"]
 
         if abstract_text != "" and pmid != "":
-            sentences = self.get_sentences(abstract_text)
+            sentences = get_sentences(abstract_text)
         else:
             return None
 
@@ -573,8 +464,10 @@ class PubmedPMID:
                     # merge the split with previous split if it is less than min_split_token_length
                     # trim the split overlap_length sentences
                     previous_split = split_list[-1]
-                    split_sentences = self.get_sentences(" ".join(split))
-                    previous_split[list(previous_split.keys())[0]] += " ".join(split_sentences[self.sentence_overlap :])
+                    split_sentences = get_sentences(" ".join(split))
+                    previous_split[list(previous_split.keys())[0]] += " ".join(
+                        split_sentences[self.sentence_overlap :]
+                    )
             article_splits.extend(split_list)
 
         return article_splits
@@ -629,14 +522,14 @@ class PubmedPMID:
 
         # Get the citation count of the article
         if self.citation_count_bool:
-            json_output["meta_info"][
-                "citation_count"
-            ] = self.get_article_citation_count(doi)
+            json_output["meta_info"]["citation_count"] = get_article_citation_count(
+                doi, pmid
+            )
 
         # # Get the journal ranking info
         if self.journal_ranking_bool:
-            json_output["meta_info"]["journal_ranking"] = self.get_journal_ranking(
-                journal_name
+            json_output["meta_info"]["journal_ranking"] = get_journal_ranking(
+                journal_name, pmid
             )
 
         return json_output
@@ -654,194 +547,3 @@ class PubmedPMID:
                     res = self.build_pubmed_json(xml_tree=element)
                     element.clear()
                     yield res
-
-
-# Constants for the unicode characters used in sentence detection
-PUNCT_INDICATOR = "╚"
-ELLIPSIS_INDICATOR = "╦"
-ABBREVIATOR = "╞"
-NUM_INDICATOR = "╟"
-MULT_PERIOD = "╔"
-SPECIAL_PERIOD = "╩"
-QUESTION_IN_QUOTE = "╤"
-EXCLAMATION_INDICATOR = "╥"
-BREAK_INDICATOR = "\uF050"
-DOT = "\uF051"
-COMMA = "\uF052"
-SEMICOLON = "\uF053"
-QUESTION = "\uF054"
-EXCLAMATION = "\uF055"
-PROTECTION_MARKER_OPEN = "\uF056"
-PROTECTION_MARKER_CLOSE = "\uF057"
-PROTECT_CHAR = "ↈ"
-BREAK_CHAR = "ↇ"
-
-reverse_dict = {
-    DOT: ".",
-    SEMICOLON: ";",
-    QUESTION: "?",
-    EXCLAMATION: "!",
-    PROTECTION_MARKER_OPEN: "",
-    PROTECTION_MARKER_CLOSE: "",
-    ABBREVIATOR: ".",
-    NUM_INDICATOR: ".",
-    MULT_PERIOD: ".",
-    QUESTION_IN_QUOTE: "?",
-    EXCLAMATION_INDICATOR: "!",
-    ELLIPSIS_INDICATOR: "...",
-}
-
-
-class Formater:
-    """A class used for sentence detection."""
-
-    _PREPOSITIVE_ABBREVIATIONS = ["dr", "mr", "ms", "mt", "st"]
-    _NUMBER_ABBREVIATIONS = ["no", "px"]
-
-    _pabb = "(?:" + "|".join(_PREPOSITIVE_ABBREVIATIONS) + ")"
-    _nubb = "(?:" + "|".join(_NUMBER_ABBREVIATIONS) + ")"
-
-    _number_rules = [
-        "(?<=\d)\.(?=\d)",
-        "\.(?=\d)",
-        "(?<=\d)\.(?=\S)",
-        "(?<=^\d)\.(?=(\s\S)|\))",
-        "(?<=^\d\d)\.(?=(\s\S)|\))",
-    ]
-
-    _ditc_abbr_rules = [
-        rf"(?i)(?<=\s{_pabb})\.(?=\s)|(?<=^{_pabb})\.(?=\d+)",
-        rf"(?i)(?<=\s{_pabb})\.(?=\d+)|(?<=^{_pabb})\.(?=\d+)",
-        rf"(?i)(?<=\s{_nubb})\.(?=s\\d)|(?<=^{_nubb})\.(?=s\\d)",
-        rf"(?i)(?<=\s{_nubb})\.(?=:\s+\()|(?<=^{_nubb})\.(?=\s+\()",
-    ]
-
-    _std_abbre_rules = [
-        "\.(?='s\s)|\.(?='s\$)|\.(?='s\Z)",
-        "(?<=Co)\.(?=\sKG)",
-        "(?<=^[A-Z])\.(?=\s)",
-        "(?<=\s[A-Z])\.(?=\s)",
-    ]
-
-    _specials_abbr_rules = [
-        r"\b[a-zA-Z](?:\.[a-zA-Z])+(?:\.(?!\s[A-Z]))*",
-        r"(?i)p\.m\.*",
-        r"(?i)a\.m\.",
-    ]
-
-    _punctuations_rules = ["(?<=\S)[!\?]+(?=\s|\Z|\$)"]
-
-    _multiple_periods_rules = ["(?<=\w)\.(?=\w)"]
-
-    _geolocations_rules = ["(?<=[a-zA-z]°)\.(?=\s*\d+)"]
-
-    _ellipsis_rules = [
-        "\.\.\.(?=\s+[A-Z])",
-        "(?<=\S)\.{3}(?=\.\s[A-Z])",
-    ]
-
-    _between_punctuations_rules = [
-        "(?<=\s|^)'[\w\s?!\.,|'\w]+'(?:\W)",
-        '"[\w\s?!\.,]+"',
-        "\[[\w\s?!\.,]+\]",
-        "\([\w\s?!\.,]+\)",
-    ]
-
-    _queation_mark_inquation_rules = ["\?(?=('|\"))"]
-
-    _exclamations_rules = ["\!(?=('|\"))", "\!(?=\,\s[a-z])", "\!(?=\s[a-z])"]
-
-    _basic_rules = {DOT: "\.", SEMICOLON: ";"}
-
-    def _replace_rules(self, content: str, simbol: str, rules: list):
-        for rule in rules:
-            content = re.sub(rule, simbol, content)
-        return content
-
-    def _replace_break_and_symbolic(self, content: str, rules: dict):
-        for key, rule in rules.items():
-            content = re.sub(rule, key + BREAK_INDICATOR, content)
-        return content
-
-    def _replace_with_all_simbols(self, content: str, simbol: str, rules: list):
-        return self._replace_rules(content, simbol, rules)
-
-    def _replace_with_all_simbols_and_breaks(
-        self, content: str, simbol: str, rules: list
-    ):
-        return self._replace_rules(content, simbol + BREAK_INDICATOR, rules)
-
-    def _replace_with_protect_breaks(self, content: str, rules: list):
-        return self._replace_rules(
-            content, PROTECTION_MARKER_OPEN + "\g<0>" + PROTECTION_MARKER_CLOSE, rules
-        )
-
-    def _replace_with_appendl(self, content: str, simbol: str, rules: list):
-        return self._replace_rules(content, "\g<0>" + simbol, rules)
-
-    def formatNumbers(self, text: str):
-        return self._replace_with_all_simbols(
-            text, NUM_INDICATOR, Formater._number_rules
-        )
-
-    def formatAbbreviations(self, text: str):
-        # There are logic in open source that could be wrong
-        replacement = self._replace_with_protect_breaks(
-            text, Formater._specials_abbr_rules
-        )
-        replacement = self._replace_with_all_simbols(
-            replacement, ABBREVIATOR, Formater._std_abbre_rules
-        )
-        return self._replace_with_all_simbols(
-            replacement, ABBREVIATOR, Formater._ditc_abbr_rules
-        )
-
-    def formatPunctuations(self, text: str):
-        return self._replace_with_appendl(
-            text, BREAK_INDICATOR, Formater._punctuations_rules
-        )
-
-    def formatEllipsisRules(self, text):
-        return self._replace_with_all_simbols_and_breaks(
-            text, ELLIPSIS_INDICATOR, Formater._punctuations_rules
-        )
-
-    def formatMultiplePeriods(self, text: str):
-        return self._replace_with_all_simbols(
-            text, MULT_PERIOD, Formater._multiple_periods_rules
-        )
-
-    def formatGeoLocations(self, text: str):
-        return self._replace_with_all_simbols(
-            text, MULT_PERIOD, Formater._geolocations_rules
-        )
-
-    def formatBetweenPunctuations(self, text: str):
-        # There are logic in open source that could be wrong
-        return text
-
-    def formatQuotationMarkInQuotation(self, text: str):
-        return self._replace_with_all_simbols(
-            text, QUESTION_IN_QUOTE, Formater._queation_mark_inquation_rules
-        )
-
-    def formatExclamationPoint(self, text: str):
-        return self._replace_with_all_simbols(
-            text, EXCLAMATION_INDICATOR, Formater._exclamations_rules
-        )
-
-    def formatBasicBreakers(self, text: str):
-        return self._replace_break_and_symbolic(text, Formater._basic_rules)
-
-    def generate_protecedContent(self, content):
-        content_modified = self.formatNumbers(content)
-        content_modified = self.formatAbbreviations(content_modified)
-        content_modified = self.formatPunctuations(content_modified)
-        content_modified = self.formatGeoLocations(content_modified)
-        content_modified = self.formatMultiplePeriods(content_modified)
-        content_modified = self.formatEllipsisRules(content_modified)
-        content_modified = self.formatBetweenPunctuations(content_modified)
-        content_modified = self.formatQuotationMarkInQuotation(content_modified)
-        content_modified = self.formatExclamationPoint(content_modified)
-        content_modified = self.formatBasicBreakers(content_modified)
-        return content_modified

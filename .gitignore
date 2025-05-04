@@ -1,4 +1,6 @@
 data
 archive
+old
 __pycache__
-```
+temp2.ipynb
+.augmentignore
