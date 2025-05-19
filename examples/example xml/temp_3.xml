@@ -1,0 +1,117 @@
+<PubmedArticle>
+    <MedlineCitation Status="MEDLINE" IndexingMethod="Curated" Owner="NLM">
+      <PMID Version="1">33156801</PMID>
+      <DateCompleted>
+        <Year>2022</Year>
+        <Month>12</Month>
+        <Day>18</Day>
+      </DateCompleted>
+      <DateRevised>
+        <Year>2022</Year>
+        <Month>12</Month>
+        <Day>18</Day>
+      </DateRevised>
+      <Article PubModel="Print-Electronic">
+        <Journal>
+          <ISSN IssnType="Electronic">2168-2275</ISSN>
+          <JournalIssue CitedMedium="Internet">
+            <Volume>52</Volume>
+            <Issue>7</Issue>
+            <PubDate>
+              <Year>2022</Year>
+              <Month>Jul</Month>
+            </PubDate>
+          </JournalIssue>
+          <Title>IEEE transactions on cybernetics</Title>
+          <ISOAbbreviation>IEEE Trans Cybern</ISOAbbreviation>
+        </Journal>
+        <ArticleTitle>On Distributed Implementation of Switch-Based Adaptive Dynamic Programming.</ArticleTitle>
+        <Pagination>
+          <MedlinePgn>7218-7224</MedlinePgn>
+        </Pagination>
+        <ELocationID EIdType="doi" ValidYN="Y">10.1109/TCYB.2020.3029825</ELocationID>
+        <Abstract>
+          <AbstractText>Switch-based adaptive dynamic programming (ADP) is an optimal control problem in which a cost must be minimized by switching among a family of dynamical modes. When the system dimension increases, the solution to switch-based ADP is made prohibitive by the exponentially increasing structure of the value function approximator and by the exponentially increasing modes. This technical correspondence proposes a distributed computational method for solving switch-based ADP. The method relies on partitioning the system into agents, each one dealing with a lower dimensional state and a few local modes. Each agent aims to minimize a local version of the global cost while avoiding that its local switching strategy has conflicts with the switching strategies of the neighboring agents. A heuristic algorithm based on the consensus dynamics and Nash equilibrium is proposed to avoid such conflicts. The effectiveness of the proposed method is verified via traffic and building test cases.</AbstractText>
+        </Abstract>
+        <AuthorList CompleteYN="Y">
+          <Author ValidYN="Y">
+            <LastName>Liu</LastName>
+            <ForeName>Di</ForeName>
+            <Initials>D</Initials>
+          </Author>
+          <Author ValidYN="Y">
+            <LastName>Baldi</LastName>
+            <ForeName>Simone</ForeName>
+            <Initials>S</Initials>
+          </Author>
+          <Author ValidYN="Y">
+            <LastName>Yu</LastName>
+            <ForeName>Wenwu</ForeName>
+            <Initials>W</Initials>
+          </Author>
+          <Author ValidYN="Y">
+            <LastName>Chen</LastName>
+            <ForeName>Guanrong</ForeName>
+            <Initials>G</Initials>
+          </Author>
+        </AuthorList>
+        <Language>eng</Language>
+        <PublicationTypeList>
+          <PublicationType UI="D016428">Journal Article</PublicationType>
+        </PublicationTypeList>
+        <ArticleDate DateType="Electronic">
+          <Year>2022</Year>
+          <Month>07</Month>
+          <Day>04</Day>
+        </ArticleDate>
+      </Article>
+      <MedlineJournalInfo>
+        <Country>United States</Country>
+        <MedlineTA>IEEE Trans Cybern</MedlineTA>
+        <NlmUniqueID>101609393</NlmUniqueID>
+        <ISSNLinking>2168-2267</ISSNLinking>
+      </MedlineJournalInfo>
+      <CitationSubset>IM</CitationSubset>
+      <MeshHeadingList>
+        <MeshHeading>
+          <DescriptorName UI="D000465" MajorTopicYN="Y">Algorithms</DescriptorName>
+        </MeshHeading>
+        <MeshHeading>
+          <DescriptorName UI="D003198" MajorTopicYN="N">Computer Simulation</DescriptorName>
+        </MeshHeading>
+        <MeshHeading>
+          <DescriptorName UI="D017711" MajorTopicYN="Y">Nonlinear Dynamics</DescriptorName>
+        </MeshHeading>
+      </MeshHeadingList>
+    </MedlineCitation>
+    <PubmedData>
+      <History>
+        <PubMedPubDate PubStatus="pubmed">
+          <Year>2020</Year>
+          <Month>11</Month>
+          <Day>7</Day>
+          <Hour>6</Hour>
+          <Minute>0</Minute>
+        </PubMedPubDate>
+        <PubMedPubDate PubStatus="medline">
+          <Year>2022</Year>
+          <Month>7</Month>
+          <Day>7</Day>
+          <Hour>6</Hour>
+          <Minute>0</Minute>
+        </PubMedPubDate>
+        <PubMedPubDate PubStatus="entrez">
+          <Year>2020</Year>
+          <Month>11</Month>
+          <Day>6</Day>
+          <Hour>17</Hour>
+          <Minute>34</Minute>
+        </PubMedPubDate>
+      </History>
+      <PublicationStatus>ppublish</PublicationStatus>
+      <ArticleIdList>
+        <ArticleId IdType="pubmed">33156801</ArticleId>
+        <ArticleId IdType="doi">10.1109/TCYB.2020.3029825</ArticleId>
+      </ArticleIdList>
+    </PubmedData>
+  </PubmedArticle>
