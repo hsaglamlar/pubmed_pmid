@@ -2,16 +2,13 @@
 of a journal based on the journal name using the exaly website https://exaly.com/journals/
 """
 
-import logging
 from urllib.parse import quote
 from functools import lru_cache
 from typing import Dict, Optional, Any, List
+from loguru import logger
 
 import requests
 from bs4 import BeautifulSoup
-
-# Configure logging
-logger = logging.getLogger(__name__)
 
 # Constants
 EXALY_URL = "https://exaly.com/journals/"
@@ -43,11 +40,11 @@ def get_journal_ranking(
     # Validate input
     if not journal_name:
         logger.warning(
-            "Journal name is empty, cannot get journal ranking for PMID %s", pmid
+            f"Journal name is empty, cannot get journal ranking for PMID {pmid}"
         )
         return {}
 
-    logger.debug("Getting journal ranking for %s", journal_name)
+    logger.debug(f"Getting journal ranking for {journal_name}")
 
     try:
         # Normalize journal name and prepare query
@@ -60,9 +57,10 @@ def get_journal_ranking(
 
         if response.status_code != 200:
             logger.warning(
-                "Failed to get journal ranking for %s. Status code: %s",
-                journal_name,
-                response.status_code,
+                (
+                    f"Failed to get journal ranking for {journal_name}."
+                    "Status code: {response.status_code}"
+                )
             )
             return {}
 
@@ -71,7 +69,7 @@ def get_journal_ranking(
         table = soup.find("table")
 
         if not table:
-            logger.warning("No ranking table found for journal %s", journal_name)
+            logger.warning(f"No ranking table found for journal {journal_name}")
             return {}
 
         # Extract table data
@@ -82,7 +80,7 @@ def get_journal_ranking(
             return {}
 
         # Find exact match or use first result
-        ranking = _find_journal_match(table_data, normalized_name)
+        ranking = _find_journal_match(table_data, normalized_name, pmid)
 
         # Clean up ranking data
         if ranking:
@@ -94,7 +92,7 @@ def get_journal_ranking(
                 ranking[key] = int(float(value.replace("K", "")) * 1000)
             elif "M" in value:
                 ranking[key] = int(float(value.replace("M", "")) * 1000000)
-            
+
             if key == "Impact Factor":
                 ranking[key] = float(value)
 
@@ -135,7 +133,7 @@ def _extract_table_data(table) -> List[List[str]]:
     return table_data
 
 
-def _find_journal_match(table_data, journal_name):
+def _find_journal_match(table_data, journal_name, pmid):
     """Find the best matching journal in the table data.
 
     Args:
@@ -159,6 +157,9 @@ def _find_journal_match(table_data, journal_name):
 
     # If no exact match, use first result
     if len(table_data) > 1:
+        logger.warning(
+            f"No exact match found for journal {journal_name}. Using first result for PMID {pmid}"
+        )
         return dict(zip(headers, table_data[1]))
 
     return {}

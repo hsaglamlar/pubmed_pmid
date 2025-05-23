@@ -2,10 +2,6 @@
 
 from itertools import chain
 from typing import Dict, List, Optional, Any
-import logging
-
-# Configure logging
-logger = logging.getLogger(__name__)
 
 LIST_SEPERATOR = ";"
 

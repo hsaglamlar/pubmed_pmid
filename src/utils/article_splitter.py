@@ -1,14 +1,11 @@
 """Module for splitting articles into smaller chunks."""
 
-import logging
 from typing import List
+from loguru import logger
 
 import tiktoken  # type: ignore
 
 from src.utils.detect_sentences import get_sentences
-
-# Configure logging
-logger = logging.getLogger(__name__)
 
 # Initialize tokenizer
 _tokenizer = tiktoken.get_encoding("p50k_base")
@@ -37,7 +34,7 @@ def split_article_paragraphs(
     abstract_sections = article_json.get("abstract", [])
     if not abstract_sections:
         logger.warning(
-            "No abstract found for article %s", article_json.get("pmid", "unknown")
+            f"No abstract found for article {article_json.get('pmid', 'unknown')}"
         )
         return article_splits
 
@@ -52,8 +49,7 @@ def split_article_paragraphs(
             sentences = get_sentences(section_text)
             if not sentences:
                 logger.warning(
-                    "No sentences found in section: %s",
-                    section.get("section_title", "Unknown"),
+                    f"No sentences found in section: {section.get('section_title', 'Unknown')}"
                 )
                 continue
 
@@ -77,10 +73,10 @@ def split_article_paragraphs(
                     }
                 )
 
-        logger.debug("Created %d article splits", len(article_splits))
+        logger.debug(f"Created {len(article_splits)} article splits")
         return article_splits
     except Exception as e:
-        logger.error("Error splitting article paragraphs: %s", e)
+        logger.error(f"Error splitting article paragraphs: {e}")
         return []
 
 

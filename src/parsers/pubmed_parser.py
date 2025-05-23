@@ -27,7 +27,7 @@ Some code adapted from https://github.com/titipata/pubmed_parser
 
 import gzip
 from typing import Dict, Optional, Any
-import logging
+from loguru import logger
 from lxml import etree  # pylint: disable=import-error
 import tiktoken  # pylint: disable=import-error
 
@@ -46,21 +46,10 @@ from src.api.journal_ranking import get_journal_ranking
 
 
 class PubmedParser:
-    """Class for generating a JSON object for a PubMed article.
+    """Parser for PubMed articles.
 
-    The JSON object contains the abstract of the article and the meta information
-    of the article such as the article title, authors, journal info, etc. The JSON
-    object also contains the article splits which are the abstract split into
-    paragraphs of max_split_token_length & min_split_token_length tokens with an
-    overlap of sentence_overlap sentences.
-
-    Args:
-        max_split_token_length: Maximum number of tokens in a split. Defaults to 500.
-        min_split_token_length: Minimum number of tokens in a split. Defaults to 100.
-        sentence_overlap: Number of sentences to overlap between splits. Defaults to 2.
-        get_citation_count_bool: Whether to get citation count. Defaults to False.
-        get_journal_ranking_bool: Whether to get journal ranking. Defaults to False.
-        timeout: Timeout for HTTP requests in seconds. Defaults to 15.
+    This class provides methods to parse PubMed articles from XML files or PMIDs.
+    It can extract article metadata, abstract, and other information.
 
     Attributes:
         max_split_token_length: Maximum number of tokens in a split
@@ -82,7 +71,6 @@ class PubmedParser:
         get_citation_count_bool: bool = False,
         get_journal_ranking_bool: bool = False,
         timeout: int = 15,
-        log_level: str = "INFO",
     ):
         """Initialize the PubmedParser.
 
@@ -93,7 +81,6 @@ class PubmedParser:
             get_citation_count_bool: Whether to get citation count. Defaults to False.
             get_journal_ranking_bool: Whether to get journal ranking. Defaults to False.
             timeout: Timeout for HTTP requests in seconds. Defaults to 15.
-            log_level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL). Defaults to INFO.
         """
         self.max_split_token_length = max_split_token_length
         self.min_split_token_length = min_split_token_length
@@ -103,11 +90,6 @@ class PubmedParser:
         self.journal_ranking_dict = {}
         self.timeout = timeout
         self._tokenizer = tiktoken.get_encoding("p50k_base")
-
-        # Set logging level
-        self.logger = logging.getLogger(__name__)
-        log_level_value = getattr(logging, log_level.upper(), logging.INFO)
-        self.logger.setLevel(log_level_value)
 
         # Initialize extractors
         self.abstract_extractor = AbstractExtractor()
@@ -149,82 +131,157 @@ class PubmedParser:
         # Parse XML if path is provided
         if xml_path is not None:
             try:
-                xml_tree = etree.parse(xml_path)
+                xml_tree = etree.parse(xml_path)  # type: ignore
             except Exception as e:  # type: ignore
-                self.logger.error("Error parsing XML file %s: %s", xml_path, e)
+                logger.error(f"Error parsing XML file {xml_path}: {e}")
                 return None
 
         if xml_tree is None:
-            self.logger.error("No XML data provided")
+            logger.error("No XML data provided")
             return None
 
-        # Get abstract
-        abstract = self.abstract_extractor.get_abstract(xml_tree)
+        try:
+            # Get abstract
+            abstract = self.abstract_extractor.get_abstract(xml_tree)
+            if abstract is None:
+                logger.debug("No abstract found in XML")
+                # Continue processing even without abstract
+                abstract = {
+                    "text": "",
+                    "section_title": "Abstract",
+                    "section_type": "ABSTRACT",
+                }
 
-        # Build JSON object
-        json_output = {
-            "abstract": [
-                (
-                    {
-                        "text": "",
-                        "section_title": "Abstract",
-                        "section_type": "ABSTRACT",
-                    }
-                    if abstract is None
-                    else abstract
+            # Extract article IDs first to get PMID for better error messages
+            article_ids = self.article_info_extractor.get_article_ids(xml_tree)
+            pmid = ""
+            doi = ""
+            for id_item in article_ids:
+                if id_item["idtype"] == "doi":
+                    doi = id_item["value"]
+                elif id_item["idtype"] == "pubmed":
+                    pmid = id_item["value"]
+
+            # Build JSON object with error handling for each component
+            json_output = {
+                "abstract": [abstract],
+                "meta_info": {
+                    "articleids": article_ids,
+                },
+                "pmid": pmid,
+            }
+
+            # Add keywords with error handling
+            try:
+                json_output["meta_info"]["kwd"] = (
+                    self.article_info_extractor.get_keywords(xml_tree)
                 )
-            ],
-            "meta_info": {
-                "articleids": self.article_info_extractor.get_article_ids(xml_tree),
-                "kwd": self.article_info_extractor.get_keywords(xml_tree),
-                "dates_history": self.article_info_extractor.get_dates_history(
+            except Exception as e:
+                logger.warning(
+                    f"Error extracting keywords for PMID {pmid or 'unknown'}: {e}"
+                )
+                json_output["meta_info"]["kwd"] = []
+
+            # Add dates history with error handling
+            try:
+                json_output["meta_info"]["dates_history"] = (
+                    self.article_info_extractor.get_dates_history(xml_tree)
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Error extracting dates history for PMID {pmid or 'unknown'}: {e}"
+                )
+                json_output["meta_info"]["dates_history"] = []
+
+            # Add journal info with error handling
+            try:
+                journal_info = self.journal_info_extractor.get_journal_info(xml_tree)
+                json_output["meta_info"].update(journal_info)
+            except Exception as e:
+                logger.warning(
+                    f"Error extracting journal info for PMID {pmid or 'unknown'}: {e}"
+                )
+
+            # Add article info with error handling
+            try:
+                article_info = self.article_info_extractor.get_article_info(xml_tree)
+                json_output["meta_info"].update(article_info)
+            except Exception as e:
+                logger.warning(
+                    f"Error extracting article info for PMID {pmid or 'unknown'}: {e}"
+                )
+
+            # Add authors with error handling
+            try:
+                json_output["meta_info"]["authors"] = self.author_extractor.get_authors(
                     xml_tree
-                ),
-                **self.journal_info_extractor.get_journal_info(xml_tree),
-                **self.article_info_extractor.get_article_info(xml_tree),
-                "authors": self.author_extractor.get_authors(xml_tree),
-                "mesh_terms": self.mesh_terms_extractor.parse_mesh_terms_with_subs(
-                    xml_tree
-                ),
-            },
-        }
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Error extracting authors for PMID {pmid or 'unknown'}: {e}"
+                )
+                json_output["meta_info"]["authors"] = []
 
-        # Extract PMID and DOI
-        pmid = ""
-        doi = ""
-        for id_item in json_output["meta_info"].get("articleids", []):
-            if id_item["idtype"] == "doi":
-                doi = id_item["value"]
-            elif id_item["idtype"] == "pubmed":
-                pmid = id_item["value"]
+            # Add mesh terms with error handling
+            try:
+                json_output["meta_info"]["mesh_terms"] = (
+                    self.mesh_terms_extractor.parse_mesh_terms_with_subs(xml_tree)
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Error extracting mesh terms for PMID {pmid or 'unknown'}: {e}"
+                )
+                json_output["meta_info"]["mesh_terms"] = ""
 
-        json_output["pmid"] = pmid
+            # Get the article splits with error handling
+            try:
+                json_output["article_splits"] = split_article_paragraphs(
+                    json_output,
+                    self.max_split_token_length,
+                    self.min_split_token_length,
+                    self.sentence_overlap,
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Error splitting article for PMID {pmid or 'unknown'}: {e}"
+                )
+                json_output["article_splits"] = []
 
-        # Get the article splits
-        json_output["article_splits"] = split_article_paragraphs(
-            json_output,
-            self.max_split_token_length,
-            self.min_split_token_length,
-            self.sentence_overlap,
-        )
+            # Get the citation count of the article
+            if self.citation_count_bool:
+                try:
+                    json_output["meta_info"]["citation_count"] = (
+                        get_article_citation_count(doi, pmid)
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Error getting citation count for PMID {pmid or 'unknown'}: {e}"
+                    )
+                    json_output["meta_info"]["citation_count"] = None
 
-        # Get the citation count of the article
-        if self.citation_count_bool:
-            json_output["meta_info"]["citation_count"] = get_article_citation_count(
-                doi, pmid
+            # Get the journal ranking info
+            if self.journal_ranking_bool:
+                try:
+                    journal_name = json_output["meta_info"].get("fulljournalname", "")
+                    json_output["meta_info"]["journal_ranking"] = get_journal_ranking(
+                        journal_name, pmid
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Error getting journal ranking for PMID {pmid or 'unknown'}: {e}"
+                    )
+                    json_output["meta_info"]["journal_ranking"] = None
+
+            if abstract["text"] == "":
+                logger.info(f"No abstract found in pubmed article {pmid}")
+
+            return json_output
+
+        except Exception as e:
+            logger.error(
+                f"Unexpected error processing XML for PMID {pmid or 'unknown'}: {e}"
             )
-
-        # Get the journal ranking info
-        if self.journal_ranking_bool:
-            journal_name = json_output["meta_info"].get("fulljournalname", "")
-            json_output["meta_info"]["journal_ranking"] = get_journal_ranking(
-                journal_name, pmid
-            )
-
-        if abstract is None:
-            self.logger.info("No abstract found in pubmed article %s", pmid)
-
-        return json_output
+            return None
 
     def build_pubmed_json_from_pmid(self, pmid: str) -> Optional[Dict[str, Any]]:
         """Build JSON object for a PubMed article using its PMID.
@@ -246,13 +303,13 @@ class PubmedParser:
             36464825
         """
         if not pmid:
-            self.logger.error("Empty PMID provided")
+            logger.error("Empty PMID provided")
             return None
 
         # Get the XML from PubMed API
         xml_text = self.get_pubmed_article_xml(pmid)
         if not xml_text:
-            self.logger.error("Failed to retrieve XML for PMID %s", pmid)
+            logger.error(f"Failed to retrieve XML for PMID {pmid}")
             return None
 
         try:
@@ -262,16 +319,14 @@ class PubmedParser:
             # Find the PubmedArticle element
             pubmed_article = xml_tree.find(".//PubmedArticle")
             if pubmed_article is None:
-                self.logger.error(
-                    "No PubmedArticle element found in XML for PMID %s", pmid
-                )
+                logger.error(f"No PubmedArticle element found in XML for PMID {pmid}")
                 return None
 
             # Build the JSON from the XML tree
             return self.build_pubmed_json(xml_tree=pubmed_article)
 
         except Exception as e:
-            self.logger.error("Error parsing XML for PMID %s: %s", pmid, e)
+            logger.error(f"Error parsing XML for PMID {pmid}: {e}")
             return None
 
     def parse_pubmed_xml_iter(self, path):
@@ -281,10 +336,33 @@ class PubmedParser:
         Yields:
             dict: A dictionary containing the JSON object for the article
         """
+        logger.info(f"Starting to parse XML file: {path}")
+        article_count = 0
+        error_count = 0
 
-        with gzip.open(path, "rb") as f:
-            for _, element in etree.iterparse(f, events=("end",)):
-                if element.tag == "PubmedArticle":
-                    res = self.build_pubmed_json(xml_tree=element)
-                    element.clear()
-                    yield res
+        try:
+            with gzip.open(path, "rb") as f:
+                for _, element in etree.iterparse(f, events=("end",)):
+                    if element.tag == "PubmedArticle":
+                        try:
+                            res = self.build_pubmed_json(xml_tree=element)
+                            article_count += 1
+                            if article_count % 100 == 0:
+                                logger.debug(f"Processed {article_count} articles")
+                            yield res
+                        except Exception as e:
+                            error_count += 1
+                            logger.warning(f"Error processing article: {e}")
+                            yield None
+                        finally:
+                            element.clear()
+
+            logger.info(
+                (
+                    f"Finished parsing XML file. Processed {article_count} "
+                    "articles with {error_count} errors"
+                )
+            )
+        except Exception as e:
+            logger.error(f"Error parsing XML file {path}: {e}")
+            yield None

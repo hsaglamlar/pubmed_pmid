@@ -3,12 +3,9 @@ of an article based on the DOI using the Crossref API (https://api.crossref.org/
 """
 
 from typing import Optional
-import logging
+from loguru import logger
 import requests
 
-
-# Configure logging
-logger = logging.getLogger(__name__)
 
 # Constants
 CROSSREF_API_URL = "https://api.crossref.org/works/"
@@ -36,14 +33,14 @@ def get_article_citation_count(
     """
     # Validate DOI
     if not doi:
-        logger.warning("DOI is empty, cannot get citation count for PMID %s", pmid)
+        logger.warning(f"DOI is empty, cannot get citation count for PMID {pmid}")
         return None
 
     # Prepare request parameters
     params = {"mailto": DEFAULT_EMAIL}
     url = f"{CROSSREF_API_URL}{doi}"
     
-    logger.debug("Requesting citation count for DOI %s (PMID %s)", doi, pmid)
+    logger.debug(f"Requesting citation count for DOI {doi} (PMID {pmid})")
 
     try:
         # Make API request with timeout
@@ -52,8 +49,7 @@ def get_article_citation_count(
         # Check if request was successful
         if response.status_code != 200:
             logger.warning(
-                "Failed to get citation count for DOI %s (PMID %s). Status code: %s",
-                doi, pmid, response.status_code
+                f"Failed to get citation count for DOI {doi} (PMID {pmid}). Status code: {response.status_code}"
             )
             return None
 
@@ -63,21 +59,21 @@ def get_article_citation_count(
         # Extract citation count from response
         if "message" in data and "is-referenced-by-count" in data["message"]:
             citation_count = data["message"]["is-referenced-by-count"]
-            logger.debug("Retrieved citation count for DOI %s: %s", doi, citation_count)
+            logger.debug(f"Retrieved citation count for DOI {doi}: {citation_count}")
             return citation_count
         else:
-            logger.warning("Citation count not found in response for DOI %s (PMID %s)", doi, pmid)
+            logger.warning(f"Citation count not found in response for DOI {doi} (PMID {pmid})")
             return None
 
     except requests.exceptions.Timeout:
-        logger.warning("Request timed out for DOI %s (PMID %s)", doi, pmid)
+        logger.warning(f"Request timed out for DOI {doi} (PMID {pmid})")
         return None
     except requests.exceptions.RequestException as e:
-        logger.warning("Request failed for DOI %s (PMID %s): %s", doi, pmid, str(e))
+        logger.warning(f"Request failed for DOI {doi} (PMID {pmid}): {str(e)}")
         return None
     except ValueError as e:
-        logger.warning("Failed to parse JSON response for DOI %s (PMID %s): %s", doi, pmid, str(e))
+        logger.warning(f"Failed to parse JSON response for DOI {doi} (PMID {pmid}): {str(e)}")
         return None
     except Exception as e:
-        logger.warning("Unexpected error for DOI %s (PMID %s): %s", doi, pmid, str(e))
+        logger.warning(f"Unexpected error for DOI {doi} (PMID {pmid}): {str(e)}")
         return None

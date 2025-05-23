@@ -14,19 +14,17 @@ Usage:
 Example:
     python parse_pubmed_xml.py data/pubmed23n1181.xml.gz data/pubmed_json
 """
-import logging
 import os
 import sys
 import json
 import time
 import argparse
 from tqdm import tqdm
-
+from loguru import logger
 
 # Add the parent directory to the path so we can import the src modules
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from src.utils.logging_config import configure_logging
 from src.parsers.pubmed_parser import PubmedParser
 
 
@@ -82,18 +80,36 @@ def main():
     args = parse_arguments()
 
     # Configure logging
-    configure_logging(level=args.log_level, log_file=args.log_file)
-    logger = logging.getLogger(__name__)
+    logger.remove()  # Remove default handler
+    logger.add(
+        sys.stderr,
+        level=args.log_level,
+        format=(
+            "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | "
+            "<level>{level: <8}</level> | "
+            "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - "
+            "<level>{message}</level>"
+        ),
+    )
+
+    # Add file handler if log_file is provided
+    if args.log_file:
+        logger.add(
+            args.log_file,
+            level=args.log_level,
+            rotation="10 MB",
+            compression="zip",
+        )
 
     # Check if input file exists
     if not os.path.exists(args.input_file):
-        logger.error("Input file '%s' does not exist", args.input_file)
+        logger.error(f"Input file '{args.input_file}' does not exist")
         return 1
 
     # Create output directory if it doesn't exist
     if not os.path.exists(args.output_dir):
         os.makedirs(args.output_dir)
-        logger.info("Created output directory: %s", args.output_dir)
+        logger.info(f"Created output directory: {args.output_dir}")
 
     # Initialize the PubmedParser
     logger.info("Initializing PubmedParser...")
@@ -103,11 +119,10 @@ def main():
         sentence_overlap=args.sentence_overlap,
         get_citation_count_bool=args.get_citations,
         get_journal_ranking_bool=args.get_journal_ranking,
-        log_level=args.log_level,
     )
 
     # Start parsing
-    logger.info("Parsing %s...", args.input_file)
+    logger.info(f"Parsing {args.input_file}...")
     start_time = time.time()
 
     # Get an iterator for the articles
@@ -131,15 +146,15 @@ def main():
                 json.dump(article, f, ensure_ascii=False, indent=2)
             article_count += 1
         except Exception as e:
-            logger.error("Error saving article %s: %s", pmid, e)
+            logger.error(f"Error saving article {pmid}: {e}")
             error_count += 1
 
     # Print summary
     elapsed_time = time.time() - start_time
-    logger.info("Processing complete in %.2f seconds", elapsed_time)
-    logger.info("Successfully processed %d articles", article_count)
+    logger.info(f"Processing complete in {elapsed_time:.2f} seconds")
+    logger.info(f"Successfully processed {article_count} articles")
     if error_count > 0:
-        logger.warning("Encountered errors with %d articles", error_count)
+        logger.warning(f"Encountered errors with {error_count} articles")
 
     return 0
 

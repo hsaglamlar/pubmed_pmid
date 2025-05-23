@@ -1,14 +1,10 @@
 """This module contains functions for detecting sentences in text using spaCy."""
 
-import logging
 from typing import List
-
+from loguru import logger
 
 import spacy  # type: ignore
 
-
-# Configure logging
-logger = logging.getLogger(__name__)
 
 # Load spaCy model once at module level
 try:
@@ -19,7 +15,7 @@ try:
     nlp = spacy.load("en_core_web_sm")
     logger.debug("Successfully loaded spaCy model 'en_core_web_sm'")
 except Exception as e:
-    logger.error("Failed to load spaCy model: %s", e)
+    logger.error(f"Failed to load spaCy model: {e}")
     logger.warning("Using blank English model as fallback")
     nlp = spacy.blank("en")
 
@@ -38,16 +34,16 @@ def get_sentences(text: str) -> List[str]:
         ['Hello world.', 'This is a test.']
     """
     if not text or not isinstance(text, str):
-        logger.warning("Invalid input text: %s", type(text))
+        logger.warning(f"Invalid input text: {type(text)}")
         return []
 
     try:
         doc = nlp(text)
         sentences = [sent.text.strip() for sent in doc.sents if sent.text.strip()]
-        logger.debug("Extracted %d sentences from text", len(sentences))
+        logger.debug(f"Extracted {len(sentences)} sentences from text")
         return sentences
     except Exception as e:
-        logger.error("Error processing text with spaCy: %s", e)
+        logger.error(f"Error processing text with spaCy: {e}")
         logger.warning("Falling back to simple sentence splitting")
         # Fallback to simple sentence splitting
         return _simple_sentence_split(text)

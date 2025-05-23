@@ -6,3 +6,4 @@ old
 .augmentignore
 .pytest_cache
 .vscode
+examples/example.log

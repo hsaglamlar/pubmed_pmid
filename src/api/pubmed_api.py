@@ -1,15 +1,13 @@
 """Module for interacting with the PubMed API."""
 
-import logging
+from typing import Optional
+from loguru import logger
 import requests
-
-# Configure logging
-logger = logging.getLogger(__name__)
 
 PUBMED_API_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
 
 
-def get_pubmed_article_xml(pmid: str, timeout: int = 15):
+def get_pubmed_article_xml(pmid: str, timeout: int = 15) -> Optional[str]:
     """Get the PubMed article XML from the PMID.
 
     Args:
@@ -31,7 +29,7 @@ def get_pubmed_article_xml(pmid: str, timeout: int = 15):
         "rettype": "xml",
     }
 
-    logger.debug("Requesting PubMed article XML for PMID %s", pmid)
+    logger.debug(f"Requesting PubMed article XML for PMID {pmid}")
 
     try:
         response = requests.get(
@@ -40,18 +38,21 @@ def get_pubmed_article_xml(pmid: str, timeout: int = 15):
             timeout=timeout,
         )
         response.raise_for_status()
-        logger.debug("Successfully retrieved XML for PMID %s", pmid)
+        logger.debug(f"Successfully retrieved XML for PMID {pmid}")
         return response.text
 
     except requests.exceptions.HTTPError as e:
-        logger.error("HTTP error retrieving PubMed article %s: %s", pmid, e)
+        logger.error(f"HTTP error retrieving PubMed article {pmid}: {e}")
         return None
     except requests.exceptions.ConnectionError as e:
-        logger.error("Connection error retrieving PubMed article %s: %s", pmid, e)
+        logger.error(f"Connection error retrieving PubMed article {pmid}: {e}")
         return None
     except requests.exceptions.Timeout as e:
-        logger.error("Timeout retrieving PubMed article %s: %s", pmid, e)
+        logger.error(f"Timeout retrieving PubMed article {pmid}: {e}")
         return None
     except requests.exceptions.RequestException as e:
-        logger.error("Error retrieving PubMed article %s: %s", pmid, e)
+        logger.error(f"Error retrieving PubMed article {pmid}: {e}")
         return None
+
+
+
